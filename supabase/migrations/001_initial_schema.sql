@@ -102,7 +102,9 @@ create policy "Users can create own budgets" on public.budgets for insert to aut
   auth.uid() = user_id and exists (select 1 from public.categories c where c.id = category_id and (c.user_id is null or c.user_id = auth.uid()))
 );
 drop policy if exists "Users can update own budgets" on public.budgets;
-create policy "Users can update own budgets" on public.budgets for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can update own budgets" on public.budgets for update to authenticated using (auth.uid() = user_id) with check (
+  auth.uid() = user_id and exists (select 1 from public.categories c where c.id = category_id and (c.user_id is null or c.user_id = auth.uid()))
+);
 drop policy if exists "Users can delete own budgets" on public.budgets;
 create policy "Users can delete own budgets" on public.budgets for delete to authenticated using (auth.uid() = user_id);
 
