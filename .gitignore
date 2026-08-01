@@ -1,0 +1,14 @@
+node_modules
+dist
+dev-dist
+.env
+.env.local
+.DS_Store
+*.log
+.vite
+.freebuff
+.agents
+claude.md.md
+*.db
+*.db-shm
+*.db-wal
