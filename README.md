@@ -54,9 +54,10 @@ Make sure you have Node.js installed on your machine.
 
 The backend is Supabase, so only the **frontend** (this Vite app) gets hosted on Cloudflare Pages. The repo is already configured for it:
 
-- `public/_redirects` → SPA fallback: `/* /index.html 200` (static assets like `sw.js` are still served first)
+- `functions/_middleware.js` → SPA fallback: unmatched routes (e.g. `/transactions`, `/settings`) get `index.html` so React Router works on refresh and deep links. (Cloudflare's `_redirects` validator rejects catch-all rewrites to `/index.html` or `/` with error 10021, so the fallback lives in a Pages Function instead.)
+- `public/_routes.json` → keeps static assets, `sw.js`, and `manifest.webmanifest` out of the Function path so they're served directly.
 - `public/_headers` → correct PWA caching (`sw.js`/`manifest.webmanifest` never stale-cached, hashed assets cached forever)
-- `npm run build` → outputs the deployable site to `dist/`
+- `npm run build` → outputs the deployable site to `dist/` (Wrangler bundles `functions/` automatically at deploy time)
 
 ### Dashboard flow (recommended)
 1. Push this repo to GitHub/GitLab.
@@ -69,7 +70,7 @@ The backend is Supabase, so only the **frontend** (this Vite app) gets hosted on
 4. Add **Production** environment variables (Settings → Environment variables):
    - `VITE_SUPABASE_URL` — your Supabase API URL (e.g. `https://xxx.supabase.co`)
    - `VITE_SUPABASE_ANON_KEY` — your project's anon key
-5. Deploy. Client-side routes (`/transactions`, `/settings`, …) work via `_redirects`, and the PWA install icon appears once the site is served over HTTPS.
+5. Deploy. Client-side routes (`/transactions`, `/settings`, …) work via the `functions/_middleware.js` SPA fallback, and the PWA install icon appears once the site is served over HTTPS.
 
 ### CLI flow
 ```bash
@@ -85,8 +86,6 @@ A ready-made workflow lives at `.github/workflows/deploy.yml` — every push to 
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — your Supabase project URL and anon key
 
 Use **either** this workflow **or** the dashboard Connect-to-Git flow above — not both (they would double-deploy).
-
-**Note:** `vercel.json` is only used if you ever deploy to Vercel instead — Cloudflare ignores it.
 
 ---
 

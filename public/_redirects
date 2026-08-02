@@ -1,8 +1,0 @@
-# SPA fallback for React Router — serve index.html for any unmatched route.
-# IMPORTANT: we rewrite to "/" and NOT "/index.html". Cloudflare's _redirects
-# validator rejects "/* /index.html 200" as a potential infinite loop because it
-# canonicalizes /index.html <-> /index, which re-matches the /* glob forever.
-# Rewriting to "/" serves index.html while keeping the URL intact for
-# client-side routing. Static assets (sw.js, manifest.webmanifest, /assets/*,
-# icons) are always served BEFORE _redirects rules, so nothing here breaks the PWA.
-/*   /   200
