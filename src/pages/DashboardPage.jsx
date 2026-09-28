@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Plus, TrendingUp, Wallet } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowDownRight, ArrowUpRight, PiggyBank, Plus, Scale, Target, TrendingUp, Wallet } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis
@@ -40,7 +41,8 @@ function FormattedMoney({ value, currency }) {
 export default function DashboardPage() {
   const [add, setAdd] = useState(false);
   const profile = useAuthStore((s) => s.profile);
-  const { transactions, loading } = useDataStore();
+  const { transactions, loading, accounts, assets, liabilities, budgets, goals } = useDataStore();
+  const navigate = useNavigate();
   const currency = profile?.currency || 'INR';
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export default function DashboardPage() {
     const now = new Date();
     let income = 0, expenses = 0, monthlyIncome = 0, monthlyExpenses = 0;
     transactions.forEach((t) => {
+      if (t.transfer_id) return;
       const amount = Number(t.amount);
       if (t.type === 'INCOME') {
         income += amount;
@@ -72,11 +75,19 @@ export default function DashboardPage() {
     return { balance: income - expenses, monthlyIncome, monthlyExpenses };
   }, [transactions]);
 
+  /* ── Net worth (accounts cash + assets − liabilities) ── */
+  const netWorth = useMemo(() => {
+    const cash = accounts.filter((a) => !a.is_archived).reduce((s, a) => s + Number(a.balance || 0), 0);
+    const invested = assets.reduce((s, a) => s + Number(a.current_value || 0), 0);
+    const owed = liabilities.reduce((s, l) => s + Number(l.remaining_balance || l.amount || 0), 0);
+    return { cash, invested, owed, total: cash + invested - owed };
+  }, [accounts, assets, liabilities]);
+
   /* ── Pie: category breakdown this month ── */
   const categoryData = useMemo(() =>
     Object.values(
       transactions
-        .filter((t) => t.type === 'EXPENSE' && isSameMonth(parseISO(t.date), new Date()))
+        .filter((t) => t.type === 'EXPENSE' && !t.transfer_id && isSameMonth(parseISO(t.date), new Date()))
         .reduce((acc, t) => {
           const name = t.categories?.name || 'Other';
           acc[name] ||= { name, value: 0, color: t.categories?.color || '#64748B' };
@@ -94,8 +105,8 @@ export default function DashboardPage() {
       const rows = transactions.filter((t) => isSameMonth(parseISO(t.date), d));
       return {
         month: format(d, 'MMM'),
-        Income: rows.filter((x) => x.type === 'INCOME').reduce((s, x) => s + Number(x.amount), 0),
-        Expense: rows.filter((x) => x.type === 'EXPENSE').reduce((s, x) => s + Number(x.amount), 0),
+        Income: rows.filter((x) => x.type === 'INCOME' && !x.transfer_id).reduce((s, x) => s + Number(x.amount), 0),
+        Expense: rows.filter((x) => x.type === 'EXPENSE' && !x.transfer_id).reduce((s, x) => s + Number(x.amount), 0),
       };
     }),
   [transactions]);
@@ -108,17 +119,56 @@ export default function DashboardPage() {
       return {
         day: format(day, 'EEE'),
         value: transactions
-          .filter((t) => t.type === 'EXPENSE' && t.date === format(day, 'yyyy-MM-dd'))
+          .filter((t) => t.type === 'EXPENSE' && !t.transfer_id && t.date === format(day, 'yyyy-MM-dd'))
           .reduce((s, x) => s + Number(x.amount), 0),
       };
     });
   }, [transactions]);
 
+  const monthlySavings = stats.monthlyIncome - stats.monthlyExpenses;
+
   const cards = [
-    { label: 'Total balance', value: stats.balance, Icon: Wallet, color: 'text-brand-700 bg-brand-50 dark:bg-brand-900/30 dark:text-brand-300', accent: 'border-t-[3px] border-t-brand-500 shadow-[0_4px_20px_-4px_rgba(15,118,110,0.15)]' },
+    { label: 'In accounts', value: netWorth.cash, Icon: Wallet, color: 'text-brand-700 bg-brand-50 dark:bg-brand-900/30 dark:text-brand-300', accent: 'border-t-[3px] border-t-brand-500 shadow-[0_4px_20px_-4px_rgba(15,118,110,0.15)]' },
     { label: 'Monthly income', value: stats.monthlyIncome, Icon: ArrowUpRight, color: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300', accent: 'border-t-[3px] border-t-emerald-500 shadow-[0_4px_20px_-4px_rgba(16,185,129,0.15)]' },
     { label: 'Monthly expenses', value: stats.monthlyExpenses, Icon: ArrowDownRight, color: 'text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-300', accent: 'border-t-[3px] border-t-red-500 shadow-[0_4px_20px_-4px_rgba(239,68,68,0.15)]' },
+    { label: 'Savings this month', value: monthlySavings, Icon: PiggyBank, color: monthlySavings >= 0 ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300' : 'text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-300', accent: monthlySavings >= 0 ? 'border-t-[3px] border-t-emerald-400 shadow-[0_4px_20px_-4px_rgba(16,185,129,0.1)]' : 'border-t-[3px] border-t-red-400 shadow-[0_4px_20px_-4px_rgba(239,68,68,0.1)]' },
   ];
+
+  /* ── Budget summary (current month) ── */
+  const budgetSummary = useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const current = budgets.filter((b) => b.month === month && b.year === year);
+    if (!current.length) return null;
+    const totalBudgeted = current.reduce((s, b) => s + Number(b.limit_amount), 0);
+    const totalSpent = current.reduce((s, b) => {
+      return s + transactions
+        .filter((t) => t.type === 'EXPENSE' && !t.transfer_id && Number(t.date.slice(0, 4)) === year && Number(t.date.slice(5, 7)) === month &&
+          (b.scope === 'CATEGORY' ? t.category_id === b.category_id : b.scope === 'ACCOUNT' ? t.account_id === b.account_id : true))
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+    }, 0);
+    const exceeded = current.filter((b) => {
+      const spent = transactions
+        .filter((t) => t.type === 'EXPENSE' && !t.transfer_id && Number(t.date.slice(0, 4)) === year && Number(t.date.slice(5, 7)) === month &&
+          (b.scope === 'CATEGORY' ? t.category_id === b.category_id : b.scope === 'ACCOUNT' ? t.account_id === b.account_id : true))
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+      return spent >= Number(b.limit_amount);
+    }).length;
+    return { totalBudgeted, totalSpent, exceeded, count: current.length, pct: Math.min(100, totalBudgeted ? (totalSpent / totalBudgeted) * 100 : 0) };
+  }, [budgets, transactions]);
+
+  /* ── Goal summary ── */
+  const goalSummary = useMemo(() => {
+    if (!goals.length) return null;
+    const totalTarget = goals.reduce((s, g) => s + Number(g.target_amount || 0), 0);
+    const totalSaved = goals.reduce((s, g) => s + Number(g.saved_amount || 0), 0);
+    const achieved = goals.filter((g) => Number(g.saved_amount) >= Number(g.target_amount)).length;
+    return { totalTarget, totalSaved, achieved, count: goals.length, pct: Math.min(100, totalTarget ? (totalSaved / totalTarget) * 100 : 0) };
+  }, [goals]);
+
+  /* ── New user check ── */
+  const isNewUser = !loading && accounts.filter((a) => !a.is_archived).length <= 1 && transactions.length === 0;
 
   const yAxisFormatter = (val) => {
     const symbol = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '£';
@@ -144,8 +194,30 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* New user onboarding */}
+      {isNewUser && (
+        <section className="card mb-6 overflow-hidden bg-gradient-to-br from-brand-50 to-emerald-50 !border-brand-100 dark:from-brand-950/30 dark:to-emerald-950/20 dark:!border-brand-900/40">
+          <h2 className="text-lg font-bold">Let&apos;s set up your money 🚀</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Get started in just three steps:</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <button onClick={() => navigate('/accounts')} className="flex items-center gap-3 rounded-xl border bg-white p-4 text-left transition hover:shadow-md dark:bg-slate-900 dark:border-slate-800">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300"><Wallet size={20} /></span>
+              <div><p className="text-sm font-bold">Add an account</p><p className="text-xs text-slate-500">Bank, cash, wallet…</p></div>
+            </button>
+            <button onClick={() => setAdd(true)} className="flex items-center gap-3 rounded-xl border bg-white p-4 text-left transition hover:shadow-md dark:bg-slate-900 dark:border-slate-800">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"><Plus size={20} /></span>
+              <div><p className="text-sm font-bold">Add a transaction</p><p className="text-xs text-slate-500">Income or expense</p></div>
+            </button>
+            <button onClick={() => navigate('/budgets')} className="flex items-center gap-3 rounded-xl border bg-white p-4 text-left transition hover:shadow-md dark:bg-slate-900 dark:border-slate-800">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"><PiggyBank size={20} /></span>
+              <div><p className="text-sm font-bold">Set a budget</p><p className="text-xs text-slate-500">Control spending</p></div>
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Stat cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map(({ label, value, Icon, color, accent }) => (
           <div className={`card group relative overflow-hidden ${accent}`} key={label}>
             <div className="flex items-center justify-between">
@@ -157,14 +229,84 @@ export default function DashboardPage() {
             <p className="mt-5 text-3xl font-black tracking-tight">
               <FormattedMoney value={value} currency={currency} />
             </p>
-            {/* subtle decorative bar at bottom */}
-            <div className={`absolute bottom-0 left-0 right-0 h-0.5 opacity-30 ${
-              label.includes('balance') ? 'bg-brand-500' :
-              label.includes('income') ? 'bg-emerald-500' : 'bg-red-500'
-            }`} />
           </div>
         ))}
       </div>
+
+      {/* Net worth banner */}
+      <section className="mt-6 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-700 to-teal-700 text-white shadow-[0_8px_30px_-8px_rgba(13,148,136,0.5)]">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <p className="flex items-center gap-1.5 text-sm font-medium text-brand-100"><Scale size={15} /> Net worth</p>
+            <p className="mt-1 text-3xl font-black tracking-tight"><FormattedMoney value={netWorth.total} currency={currency} /></p>
+          </div>
+          <div className="flex flex-wrap gap-6 text-sm">
+            <div><p className="text-xs font-medium text-brand-100">Cash in accounts</p><p className="mt-0.5 text-base font-bold">{money(netWorth.cash, currency)}</p></div>
+            <div><p className="text-xs font-medium text-brand-100">Investments</p><p className="mt-0.5 text-base font-bold">{money(netWorth.invested, currency)}</p></div>
+            <div><p className="text-xs font-medium text-brand-100">Debt</p><p className="mt-0.5 text-base font-bold">{money(netWorth.owed, currency)}</p></div>
+          </div>
+          <button className="rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/25" onClick={() => navigate('/net-worth')}>Details</button>
+        </div>
+      </section>
+
+      {/* Accounts strip */}
+      {accounts.filter((a) => !a.is_archived).length > 0 && (
+        <section className="mt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-bold">Your accounts</h2>
+            <button className="text-sm font-semibold text-brand-700 hover:underline dark:text-brand-300" onClick={() => navigate('/accounts')}>Manage →</button>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {accounts.filter((a) => !a.is_archived).map((a) => (
+              <button key={a.id} onClick={() => navigate('/accounts')} className="card min-w-44 shrink-0 !p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md" style={{ borderTop: `3px solid ${a.color}` }}>
+                <p className="truncate text-sm font-semibold">{a.name}</p>
+                <p className="mt-1 text-lg font-black tracking-tight">{money(a.balance, a.currency || currency)}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Budget & Goal summary strip */}
+      {(budgetSummary || goalSummary) && (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          {budgetSummary && (
+            <button onClick={() => navigate('/budgets')} className="card !p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300"><PiggyBank size={18} /></span>
+                  <div>
+                    <p className="text-sm font-bold">Budgets</p>
+                    <p className="text-xs text-slate-500">{budgetSummary.count} active this month</p>
+                  </div>
+                </div>
+                {budgetSummary.exceeded > 0 && <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 dark:bg-red-950/40 dark:text-red-400">{budgetSummary.exceeded} over</span>}
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div className={`h-full rounded-full transition-all duration-500 ${budgetSummary.pct >= 100 ? 'bg-red-500' : budgetSummary.pct >= 80 ? 'bg-amber-500' : 'bg-brand-600'}`} style={{ width: `${budgetSummary.pct}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{money(budgetSummary.totalSpent, currency)} of {money(budgetSummary.totalBudgeted, currency)} · {Math.round(budgetSummary.pct)}%</p>
+            </button>
+          )}
+          {goalSummary && (
+            <button onClick={() => navigate('/goals')} className="card !p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-300"><Target size={18} /></span>
+                  <div>
+                    <p className="text-sm font-bold">Goals</p>
+                    <p className="text-xs text-slate-500">{goalSummary.count} goal{goalSummary.count !== 1 ? 's' : ''}{goalSummary.achieved > 0 ? ` · ${goalSummary.achieved} achieved` : ''}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-emerald-500 transition-all duration-500" style={{ width: `${goalSummary.pct}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{money(goalSummary.totalSaved, currency)} of {money(goalSummary.totalTarget, currency)} · {Math.round(goalSummary.pct)}%</p>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Charts row 1 */}
       <div className="mt-6 grid gap-6 xl:grid-cols-5">

@@ -11,8 +11,9 @@ const features = [
 ];
 
 export default function AuthPage() {
-  const { session, signIn, signUp, configured } = useAuthStore();
+  const { session, signIn, signUp, resetPassword, configured } = useAuthStore();
   const [signup, setSignup] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ fullName: '', email: '', password: '' });
   const [status, setStatus] = useState({ busy: false, error: '', success: '' });
@@ -23,7 +24,13 @@ export default function AuthPage() {
     e.preventDefault();
     setStatus({ busy: true, error: '', success: '' });
     try {
-      if (signup) {
+      if (resetMode) {
+        await resetPassword(form.email);
+        setStatus({
+          busy: false, error: '',
+          success: 'Check your email for the password reset link.',
+        });
+      } else if (signup) {
         const data = await signUp(form);
         setStatus({
           busy: false, error: '',
@@ -92,10 +99,10 @@ export default function AuthPage() {
           </div>
 
           <h2 className="text-3xl font-black">
-            {signup ? 'Create your account' : 'Welcome back'}
+            {resetMode ? 'Reset password' : signup ? 'Create your account' : 'Welcome back'}
           </h2>
           <p className="mt-2 text-slate-500">
-            {signup ? 'Start taking control of your money.' : 'Sign in to your finance workspace.'}
+            {resetMode ? 'Enter your email to receive a reset link.' : signup ? 'Start taking control of your money.' : 'Sign in to your finance workspace.'}
           </p>
 
           {/* Supabase not configured warning */}
@@ -120,7 +127,7 @@ export default function AuthPage() {
               </div>
             )}
 
-            {signup && (
+            {!resetMode && signup && (
               <div>
                 <label className="label">Full name</label>
                 <input
@@ -147,45 +154,69 @@ export default function AuthPage() {
               />
             </div>
 
-            <div>
-              <label className="label">Password</label>
-              <div className="relative">
-                <input
-                  className="field pr-11"
-                  type={show ? 'text' : 'password'}
-                  minLength={8}
-                  required
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  autoComplete={signup ? 'new-password' : 'current-password'}
-                  placeholder="Min. 8 characters"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-2.5 text-slate-400 transition hover:text-slate-600"
-                  onClick={() => setShow(!show)}
-                >
-                  {show ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
+            {!resetMode && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="label">Password</label>
+                  {!signup && (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                      onClick={() => { setResetMode(true); setStatus({ busy: false, error: '', success: '' }); }}
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    className="field pr-11"
+                    type={show ? 'text' : 'password'}
+                    minLength={8}
+                    required
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    autoComplete={signup ? 'new-password' : 'current-password'}
+                    placeholder="Min. 8 characters"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-2.5 text-slate-400 transition hover:text-slate-600"
+                    onClick={() => setShow(!show)}
+                  >
+                    {show ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <button className="btn-primary w-full" disabled={status.busy || !configured}>
               {status.busy
                 ? <><Loader2 size={16} className="animate-spin" /> Please wait…</>
-                : signup ? 'Create account' : 'Sign in'
+                : resetMode ? 'Send reset link' : signup ? 'Create account' : 'Sign in'
               }
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-500">
-            {signup ? 'Already have an account?' : 'New to Monetra?'}{' '}
-            <button
-              className="font-semibold text-brand-700 hover:underline dark:text-brand-400"
-              onClick={() => { setSignup(!signup); setStatus({ busy: false, error: '', success: '' }); }}
-            >
-              {signup ? 'Sign in' : 'Create account'}
-            </button>
+            {resetMode ? (
+              <button
+                className="font-semibold text-brand-700 hover:underline dark:text-brand-400"
+                onClick={() => { setResetMode(false); setStatus({ busy: false, error: '', success: '' }); }}
+              >
+                Back to sign in
+              </button>
+            ) : (
+              <>
+                {signup ? 'Already have an account?' : 'New to Monetra?'}{' '}
+                <button
+                  className="font-semibold text-brand-700 hover:underline dark:text-brand-400"
+                  onClick={() => { setSignup(!signup); setStatus({ busy: false, error: '', success: '' }); }}
+                >
+                  {signup ? 'Sign in' : 'Create account'}
+                </button>
+              </>
+            )}
           </p>
         </div>
       </section>

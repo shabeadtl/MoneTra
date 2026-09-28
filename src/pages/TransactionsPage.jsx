@@ -7,9 +7,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { csvDownload, money, prettyDate } from '../lib/utils';
+import ConfirmDialog from '../components/ConfirmDialog';
+import Toast from '../components/Toast';
 
 const PAGE_SIZE = 10;
-const DEFAULT_FILTERS = { q: '', type: '', category: '', from: '', to: '', sort: 'date-desc' };
+const DEFAULT_FILTERS = { q: '', type: '', category: '', account: '', from: '', to: '', sort: 'date-desc' };
 
 function formatSigned(amount, type, currency) {
   const m = money(amount, currency);
@@ -18,12 +20,17 @@ function formatSigned(amount, type, currency) {
 
 export default function TransactionsPage() {
   const currency = useAuthStore((s) => s.profile?.currency || 'INR');
-  const { transactions, categories, deleteTransaction } = useDataStore();
+  const { transactions, categories, accounts, deleteTransaction } = useDataStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(() => ({
+    ...DEFAULT_FILTERS,
+    account: searchParams.get('account') || '',
+  }));
+  const [confirmTx, setConfirmTx] = useState(null);
+  const [toast, setToast] = useState('');
 
   // PWA shortcut: /transactions?new=1 opens the Add Transaction modal
   useEffect(() => {
@@ -34,7 +41,7 @@ export default function TransactionsPage() {
   }, [searchParams, setSearchParams]);
 
   const activeFilterCount =
-    [filters.q, filters.type, filters.category, filters.from, filters.to].filter(Boolean).length +
+    [filters.q, filters.type, filters.category, filters.account, filters.from, filters.to].filter(Boolean).length +
     (filters.sort !== DEFAULT_FILTERS.sort ? 1 : 0);
 
   const filtered = useMemo(() => {
@@ -46,6 +53,7 @@ export default function TransactionsPage() {
         )) &&
         (!filters.type || t.type === filters.type) &&
         (!filters.category || t.category_id === filters.category) &&
+        (!filters.account || t.account_id === filters.account) &&
         (!filters.from || t.date >= filters.from) &&
         (!filters.to   || t.date <= filters.to)
       )
@@ -66,7 +74,9 @@ export default function TransactionsPage() {
   const clearFilters = () => { setFilters(DEFAULT_FILTERS); setPage(1); };
 
   async function remove(tx) {
-    if (confirm(`Delete "${tx.title}"?`)) await deleteTransaction(tx.id);
+    await deleteTransaction(tx.id);
+    setConfirmTx(null);
+    setToast(`"${tx.title}" deleted`);
   }
 
   return (
@@ -117,6 +127,12 @@ export default function TransactionsPage() {
           <select className="field lg:w-44" value={filters.category} onChange={(e) => setFilter('category', e.target.value)}>
             <option value="">All categories</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+
+          {/* Account */}
+          <select className="field lg:w-44" value={filters.account} onChange={(e) => setFilter('account', e.target.value)}>
+            <option value="">All accounts</option>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
 
           {/* Type */}
@@ -213,7 +229,7 @@ export default function TransactionsPage() {
           <table className="w-full border-separate border-spacing-0 text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-slate-500">
               <tr>
-                {['Date', 'Title', 'Category', 'Type', 'Amount', ''].map((x) => (
+                {['Date', 'Title', 'Category', 'Account', 'Type', 'Amount', ''].map((x) => (
                   <th
                     className={`sticky top-0 z-10 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-5 py-3 font-semibold dark:border-slate-700 dark:bg-slate-800 ${x === 'Amount' ? 'text-right' : ''}`}
                     key={x}
@@ -241,6 +257,14 @@ export default function TransactionsPage() {
                     </span>
                   </td>
                   <td className="px-5 py-4">
+                    {t.accounts?.name ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700/60 dark:bg-slate-800/80 dark:text-slate-200">
+                        <i className="h-1.5 w-1.5 rounded-full" style={{ background: t.accounts?.color || '#64748B' }} />
+                        {t.accounts.name}
+                      </span>
+                    ) : <span className="text-slate-400">—</span>}
+                  </td>
+                  <td className="px-5 py-4">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
                         t.type === 'INCOME'
@@ -266,7 +290,7 @@ export default function TransactionsPage() {
                       </button>
                       <button
                         className="rounded-lg p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600 active:scale-95 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                        onClick={() => remove(t)}
+                        onClick={() => setConfirmTx(t)}
                         title="Delete"
                       >
                         <Trash2 size={16} />
@@ -292,6 +316,7 @@ export default function TransactionsPage() {
                       <i className="h-1.5 w-1.5 rounded-full" style={{ background: t.categories?.color }} />
                       {t.categories?.name}
                     </span></>}
+                    {t.accounts?.name && <> · <span className="text-slate-500">{t.accounts.name}</span></>}
                   </p>
                   {t.local_only && <p className="mt-1 text-xs font-medium text-amber-600">⏳ Waiting to sync</p>}
                 </div>
@@ -306,7 +331,7 @@ export default function TransactionsPage() {
               </div>
               <div className="mt-3 flex justify-end gap-2">
                 <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setEdit(t)} disabled={t.local_only}>Edit</button>
-                <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => remove(t)}>Delete</button>
+                <button className="btn-danger px-3 py-1.5 text-xs" onClick={() => setConfirmTx(t)}>Delete</button>
               </div>
             </article>
           ))}
@@ -358,8 +383,18 @@ export default function TransactionsPage() {
         onClose={() => { setOpen(false); setEdit(null); }}
         title={edit ? 'Edit transaction' : 'Add transaction'}
       >
-        <TransactionForm initial={edit} onDone={() => { setOpen(false); setEdit(null); }} />
+        <TransactionForm initial={edit} onDone={() => { setOpen(false); setEdit(null); setToast(edit ? 'Transaction updated' : 'Transaction added'); }} />
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(confirmTx)}
+        title="Delete transaction?"
+        message={`"${confirmTx?.title}" will be permanently deleted. This cannot be undone.`}
+        onConfirm={() => confirmTx && remove(confirmTx)}
+        onCancel={() => setConfirmTx(null)}
+      />
+
+      <Toast message={toast} onClose={() => setToast('')} />
     </div>
   );
 }

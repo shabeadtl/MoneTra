@@ -1,21 +1,44 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronLeft, ChevronRight, CircleDollarSign, LayoutDashboard, LogOut, PiggyBank, ReceiptText, Settings, ShieldCheck, WifiOff } from 'lucide-react';
+import { BarChart3, Bell, ChevronLeft, ChevronRight, CircleDollarSign, Ellipsis, LayoutDashboard, LogOut, PiggyBank, ReceiptText, Scale, Settings, ShieldCheck, Target, Wallet, WifiOff, ArrowLeftRight, Folder } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import NotificationsDropdown from './NotificationsDropdown';
 import ProfileDropdown from './ProfileDropdown';
 
-const nav = [
-  ['/', 'Dashboard', LayoutDashboard],
-  ['/transactions', 'Transactions', ReceiptText],
-  ['/budgets', 'Budgets', PiggyBank],
-  ['/notifications', 'Notifications', Bell],
-  ['/settings', 'Settings', Settings]
+const navSections = [
+  { label: null, items: [['/', 'Dashboard', LayoutDashboard]] },
+  { label: 'Money', items: [
+    ['/transactions', 'Transactions', ReceiptText],
+    ['/accounts', 'Accounts', Wallet],
+    ['/transfers', 'Transfers', ArrowLeftRight],
+  ]},
+  { label: 'Planning', items: [
+    ['/budgets', 'Budgets', PiggyBank],
+    ['/goals', 'Goals', Target],
+  ]},
+  { label: 'Wealth', items: [
+    ['/net-worth', 'Net Worth', Scale],
+  ]},
+  { label: 'Insights', items: [
+    ['/reports', 'Reports', BarChart3],
+  ]},
+  { label: 'Manage', items: [
+    ['/categories', 'Categories', Folder],
+    ['/notifications', 'Notifications', Bell],
+    ['/settings', 'Settings', Settings],
+  ]},
 ];
+
+const nav = navSections.flatMap((s) => s.items);
+
+// Keep the mobile tab bar to the essentials; the rest lives in a "More" sheet.
+const mobileNav = [['/', 'Dashboard', LayoutDashboard], ['/transactions', 'Transactions', ReceiptText], ['/accounts', 'Accounts', Wallet], ['/reports', 'Reports', BarChart3]];
+const moreNav = nav.filter((n) => !mobileNav.some((m) => m[0] === n[0]));
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,6 +55,9 @@ export default function AppLayout() {
     return () => { removeEventListener('online', up); removeEventListener('offline', down); };
   }, [fetchAll, processQueue]);
 
+  // Close the More sheet when navigating
+  useEffect(() => { setMoreOpen(false); }, [location.pathname]);
+
   async function logout() {
     await signOut();
     clear();
@@ -40,12 +66,23 @@ export default function AppLayout() {
 
   // Get active page name for mobile header
   const getPageTitle = () => {
-    if (location.pathname === '/') return 'Dashboard';
     const match = nav.find(([path]) => path !== '/' && location.pathname.startsWith(path));
     if (match) return match[1];
     if (location.pathname.startsWith('/admin')) return 'Admin';
     return 'Monetra';
   };
+
+  const linkClass = ({ isActive }) =>
+    `group relative flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'p-2.5' : 'px-3 py-2.5'} text-sm font-medium transition ${isActive
+      ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-100'
+      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+    }`;
+
+  const tooltip = (label) => (
+    <div className="pointer-events-none absolute left-full ml-4 w-max rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 dark:bg-slate-800 z-50">
+      {label}
+    </div>
+  );
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -56,50 +93,36 @@ export default function AppLayout() {
         {!collapsed && (
           <div className="min-w-0 flex-1">
             <p className="text-xl font-black tracking-tight truncate">Monetra</p>
-            <p className="text-xs text-slate-500 truncate">Expense Manager</p>
+            <p className="text-xs text-slate-500 truncate">Personal Finance</p>
           </div>
         )}
       </div>
-      <nav className={`flex-1 space-y-1 ${collapsed ? 'px-3' : 'px-3'}`}>
-        {nav.map(([to, label, Icon]) => (
-          <NavLink
-            key={to} to={to} end={to === '/'}
-            className={({ isActive }) =>
-              `group relative flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'p-2.5' : 'px-3 py-2.5'} text-sm font-medium transition ${isActive
-                ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-100'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`
-            }
-          >
-            <Icon size={19} className="shrink-0" />
-            {!collapsed && <span className="truncate">{label}</span>}
-            {collapsed && (
-              <div className="pointer-events-none absolute left-full ml-4 w-max rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 dark:bg-slate-800 z-50">
-                {label}
-              </div>
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3">
+        {navSections.map((section, si) => (
+          <div key={si} className={section.label ? 'pt-4 first:pt-0' : ''}>
+            {section.label && !collapsed && (
+              <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-600">{section.label}</p>
             )}
-            {label === 'Notifications' && hasUnread && (
-              <span className={`rounded-full bg-red-500 ${collapsed ? 'absolute top-2 right-2 h-2.5 w-2.5 ring-2 ring-white dark:ring-slate-900' : 'ml-auto h-2 w-2'}`} />
+            {section.label && collapsed && si > 0 && (
+              <div className="mx-auto my-2 h-px w-6 bg-slate-200 dark:bg-slate-700" />
             )}
-          </NavLink>
+            {section.items.map(([to, label, Icon]) => (
+              <NavLink key={to} to={to} end={to === '/'} className={linkClass}>
+                <Icon size={19} className="shrink-0" />
+                {!collapsed && <span className="truncate">{label}</span>}
+                {collapsed && tooltip(label)}
+                {label === 'Notifications' && hasUnread && (
+                  <span className={`rounded-full bg-red-500 ${collapsed ? 'absolute top-2 right-2 h-2.5 w-2.5 ring-2 ring-white dark:ring-slate-900' : 'ml-auto h-2 w-2'}`} />
+                )}
+              </NavLink>
+            ))}
+          </div>
         ))}
         {isAdmin && (
-          <NavLink
-            to="/admin"
-            className={({ isActive }) =>
-              `group relative flex items-center ${collapsed ? 'justify-center' : 'gap-3'} rounded-xl ${collapsed ? 'p-2.5' : 'px-3 py-2.5'} text-sm font-medium transition ${isActive
-                ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`
-            }
-          >
+          <NavLink to="/admin" className={linkClass}>
             <ShieldCheck size={19} className="shrink-0" />
             {!collapsed && <span>Admin</span>}
-            {collapsed && (
-              <div className="pointer-events-none absolute left-full ml-4 w-max rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 dark:bg-slate-800 z-50">
-                Admin
-              </div>
-            )}
+            {collapsed && tooltip('Admin')}
           </NavLink>
         )}
       </nav>
@@ -110,11 +133,7 @@ export default function AppLayout() {
         >
           <LogOut size={17} className="shrink-0" />
           {!collapsed && <span>Sign out</span>}
-          {collapsed && (
-            <div className="pointer-events-none absolute left-full ml-4 w-max rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 dark:bg-slate-800 z-50">
-              Sign out
-            </div>
-          )}
+          {collapsed && tooltip('Sign out')}
         </button>
       </div>
     </div>
@@ -167,7 +186,7 @@ export default function AppLayout() {
 
         {/* Bottom tab bar for mobile */}
         <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 border-t bg-white/95 backdrop-blur pb-[env(safe-area-inset-bottom)] dark:bg-slate-900/95 lg:hidden">
-          {nav.map(([to, label, Icon]) => {
+          {mobileNav.map(([to, label, Icon]) => {
             const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to);
             return (
               <NavLink
@@ -179,12 +198,51 @@ export default function AppLayout() {
                   <Icon size={20} />
                   <span className="text-[10px] font-semibold">{label}</span>
                 </div>
-                {label === 'Notifications' && hasUnread && (
-                  <span className="absolute right-[33%] top-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
-                )}
               </NavLink>
             );
           })}
+
+          {/* More */}
+          <button
+            className="relative flex flex-1 flex-col items-center justify-center text-slate-500 dark:text-slate-400"
+            onClick={() => setMoreOpen(!moreOpen)}
+          >
+            <div className={`flex flex-col items-center justify-center gap-0.5 transition ${moreOpen ? 'text-brand-700 dark:text-brand-400 scale-105' : 'hover:text-slate-700 dark:hover:text-slate-200'}`}>
+              <Ellipsis size={20} />
+              <span className="text-[10px] font-semibold">More</span>
+            </div>
+          </button>
+
+          {/* More sheet */}
+          {moreOpen && (
+            <div className="absolute bottom-16 left-3 right-3 z-50 rounded-2xl border bg-white p-3 shadow-2xl animate-fade-in dark:bg-slate-900 dark:border-slate-700">
+              <div className="grid grid-cols-3 gap-1">
+                {moreNav.map(([to, label, Icon]) => {
+                  const isActive = location.pathname.startsWith(to);
+                  return (
+                    <button
+                      key={to}
+                      onClick={() => navigate(to)}
+                      className={`relative flex flex-col items-center gap-1.5 rounded-xl p-3 text-xs font-semibold transition ${isActive ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                    >
+                      <Icon size={20} />
+                      {label}
+                      {label === 'Notifications' && hasUnread && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />}
+                    </button>
+                  );
+                })}
+                {isAdmin && (
+                  <button
+                    onClick={() => navigate('/admin')}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl p-3 text-xs font-semibold transition ${location.pathname.startsWith('/admin') ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                  >
+                    <ShieldCheck size={20} />
+                    Admin
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </nav>
       </div>
     </div>

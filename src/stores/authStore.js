@@ -61,5 +61,11 @@ export const useAuthStore = create((set, get) => ({
   updatePassword: async (password) => {
     const { error } = await requireSupabase().auth.updateUser({ password });
     if (error) throw error;
+  },
+  resetPassword: async (email) => {
+    const { error } = await requireSupabase().auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/settings',
+    });
+    if (error) throw error;
   }
 }));

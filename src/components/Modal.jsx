@@ -1,11 +1,29 @@
+import { useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 
 export default function Modal({ open, onClose, title, children, size = 'max-w-lg' }) {
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape') onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [open, handleKeyDown]);
+
   if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 backdrop-blur-sm p-0 md:items-center md:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
     >
       <section
         className={`w-full ${size} animate-slide-up rounded-t-3xl border-t bg-white shadow-2xl dark:bg-slate-900 md:my-auto md:animate-fade-in md:rounded-2xl md:border`}
@@ -14,7 +32,7 @@ export default function Modal({ open, onClose, title, children, size = 'max-w-lg
         <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-slate-200 dark:bg-slate-700 md:hidden" />
 
         <header className="flex items-center justify-between border-b px-5 pb-4 pt-2 md:pt-4">
-          <h2 className="text-lg font-bold">{title}</h2>
+          <h2 id="modal-title" className="text-lg font-bold">{title}</h2>
           <button
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
             onClick={onClose}
@@ -24,10 +42,11 @@ export default function Modal({ open, onClose, title, children, size = 'max-w-lg
           </button>
         </header>
 
-        <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5">
+        <div className="max-h-[80vh] overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5">
           {children}
         </div>
       </section>
     </div>
   );
 }
+
