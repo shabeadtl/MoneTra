@@ -75,7 +75,7 @@ export const useDataStore = create((set, get) => ({
       client.from('goals').select('*').order('created_at', { ascending: false }),
     ]);
     const ok = (r) => r.status === 'fulfilled' && !r.value.error;
-    const firstError = [...tx, cats, budgets, notes, accounts, transfers, assets, liabilities, goals]
+    const firstError = [tx, cats, budgets, notes, accounts, transfers, assets, liabilities, goals]
       .find((r) => r.status === 'fulfilled' && r.value.error);
     if (firstError) set({ error: firstError.value.error.message });
     set({
