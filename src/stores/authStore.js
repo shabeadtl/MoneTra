@@ -8,6 +8,12 @@ export const useAuthStore = create((set, get) => ({
   loading: true,
   configured: isSupabaseConfigured,
   initialize: async () => {
+    if (localStorage.getItem('monetra_local_mode') === 'true') {
+      const localProfile = JSON.parse(localStorage.getItem('monetra_local_profile') || 'null') || { full_name: 'Local User', currency: 'INR', theme_preference: 'light' };
+      document.documentElement.classList.toggle('dark', localProfile.theme_preference === 'dark');
+      set({ session: { access_token: 'local' }, user: { id: 'local-user' }, profile: localProfile, loading: false });
+      return () => {};
+    }
     if (!supabase) return set({ loading: false });
     const { data } = await supabase.auth.getSession();
     set({ session: data.session, user: data.session?.user || null });
@@ -18,6 +24,15 @@ export const useAuthStore = create((set, get) => ({
       if (session) await get().loadProfile();
     });
     return () => listener.subscription.unsubscribe();
+  },
+  setLocalMode: () => {
+    localStorage.setItem('monetra_local_mode', 'true');
+    const localProfile = JSON.parse(localStorage.getItem('monetra_local_profile') || 'null') || { full_name: 'Local User', currency: 'INR', theme_preference: 'light' };
+    set({
+      session: { access_token: 'local' },
+      user: { id: 'local-user' },
+      profile: localProfile,
+    });
   },
   loadProfile: async () => {
     const user = get().user;
@@ -38,10 +53,22 @@ export const useAuthStore = create((set, get) => ({
     return data;
   },
   signOut: async () => {
-    await requireSupabase().auth.signOut();
+    if (localStorage.getItem('monetra_local_mode') === 'true') {
+      localStorage.removeItem('monetra_local_mode');
+    } else {
+      await requireSupabase().auth.signOut();
+    }
     set({ session: null, user: null, profile: null });
   },
   updateProfile: async (updates) => {
+    if (localStorage.getItem('monetra_local_mode') === 'true') {
+      const current = get().profile;
+      const next = { ...current, ...updates };
+      localStorage.setItem('monetra_local_profile', JSON.stringify(next));
+      document.documentElement.classList.toggle('dark', next.theme_preference === 'dark');
+      set({ profile: next });
+      return;
+    }
     const user = get().user;
     const { data, error } = await requireSupabase().from('profiles').update(updates).eq('id', user.id).select().single();
     if (error) throw error;

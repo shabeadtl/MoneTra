@@ -25,6 +25,7 @@ export default function TransactionsPage() {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(() => window.innerWidth >= 1024);
   const [filters, setFilters] = useState(() => ({
     ...DEFAULT_FILTERS,
     account: searchParams.get('account') || '',
@@ -80,7 +81,7 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-12.5rem)] flex-col gap-4 overflow-hidden lg:h-[calc(100dvh-9rem)] lg:gap-5">
+    <div className="flex flex-col gap-4 lg:h-[calc(100dvh-9rem)] lg:overflow-hidden lg:gap-5">
       {/* Header */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div>
@@ -102,8 +103,20 @@ export default function TransactionsPage() {
 
       {/* Filters */}
       <section className="card shrink-0">
-        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-          {/* Search */}
+        <button
+          className="flex w-full cursor-pointer items-center justify-between font-semibold text-slate-700 outline-none dark:text-slate-300"
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <div className="flex items-center gap-2">
+            <Search size={18} className="text-slate-400" />
+            {activeFilterCount > 0 ? `Filters applied (${activeFilterCount})` : 'Search & Filters'}
+          </div>
+          <ChevronRight size={18} className={`text-slate-400 transition-transform ${showFilters ? 'rotate-90' : ''}`} />
+        </button>
+        
+        {showFilters && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 lg:flex-row lg:flex-wrap lg:items-end">
+            {/* Search */}
           <div className="relative lg:min-w-56 lg:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
@@ -218,6 +231,7 @@ export default function TransactionsPage() {
             </button>
           )}
         </div>
+        )}
       </section>
 
       {/* Table */}
